@@ -1,5 +1,9 @@
 # 福生无量天尊
-from openai import OpenAI
+try:
+    from openai import OpenAI
+except Exception:
+    OpenAI = None
+    print("⚠️ openai 模块不可用，DeepSeek 相关功能将被禁用。若需要，请安装 openai 包并设置 OPENAI_API_KEY。")
 import feedparser
 import requests
 from newspaper import Article
@@ -8,16 +12,29 @@ import time
 import pytz
 import os
 import re
+import traceback
 
 # OpenAI API Key
 openai_api_key = os.getenv("OPENAI_API_KEY")
-# 从环境变量获取 Server酱 SendKeys
-server_chan_keys_env = os.getenv("SERVER_CHAN_KEYS")
-if not server_chan_keys_env:
-    raise ValueError("环境变量 SERVER_CHAN_KEYS 未设置，请在Github Actions中设置此变量！")
-server_chan_keys = server_chan_keys_env.split(",")
 
-openai_client = OpenAI(api_key=openai_api_key, base_url="https://api.deepseek.com/v1")
+# 从环境变量获取 Server酱 SendKeys（非必须，未设置时仅打印摘要）
+server_chan_keys_env = os.getenv("SERVER_CHAN_KEYS", "")
+if server_chan_keys_env and server_chan_keys_env.strip():
+    server_chan_keys = [k.strip() for k in server_chan_keys_env.split(",") if k.strip()]
+else:
+    server_chan_keys = []
+    print("⚠️ 环境变量 SERVER_CHAN_KEYS 未设置，推送功能将被禁用。设置 SERVER_CHAN_KEYS 后可启用微信推送。")
+
+# 初始化 OpenAI/DeepSeek 客户端（可选）
+openai_client = None
+if openai_api_key:
+    try:
+        openai_client = OpenAI(api_key=openai_api_key, base_url="https://api.deepseek.com/v1")
+    except Exception as e:
+        print(f"⚠️ 无法初始化 OpenAI/DeepSeek 客户端: {e}")
+
+# 是否启用 DeepSeek 语义分类（以客户端是否可用为准）
+USE_DEEPSEEK = bool(openai_client)
 
 # RSS源地址列表
 rss_feeds = {
@@ -55,10 +72,6 @@ FILTER_KEYWORDS = [
     "store", "retailer"
 ]
 
-# 是否启用 DeepSeek 语义分类（需要设置 OPENAI_API_KEY）
-USE_DEEPSEEK = bool(openai_api_key)
-
-
 def contains_keyword(text: str) -> bool:
     """快速关键词匹配（中/英混合）。"""
     if not text:
@@ -70,7 +83,6 @@ def contains_keyword(text: str) -> bool:
     return False
 
 
-<<<<<<< HEAD
 def classify_titles_with_deepseek(titles: list) -> dict:
     """
     对一组新闻标题进行批量判定，返回编号到标签的映射。
@@ -84,7 +96,7 @@ def classify_titles_with_deepseek(titles: list) -> dict:
     for i in range(1, len(titles) + 1):
         labels[i] = 'MAYBE'
 
-    if not USE_DEEPSEEK:
+    if not USE_DEEPSEEK or not openai_client:
         for i, t in enumerate(titles, start=1):
             labels[i] = 'YES' if contains_keyword(t) else 'MAYBE'
         return labels
@@ -102,7 +114,7 @@ def classify_titles_with_deepseek(titles: list) -> dict:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": numbered}
             ],
-            max_tokens= max(64, len(titles) * 6),
+            max_tokens=max(64, len(titles) * 6),
             temperature=0
         )
         text = resp.choices[0].message.content
@@ -144,7 +156,7 @@ def classify_text_with_deepseek(text: str) -> str:
     """
     if not text:
         return 'MAYBE'
-    if not USE_DEEPSEEK:
+    if not USE_DEEPSEEK or not openai_client:
         return 'YES' if contains_keyword(text) else 'MAYBE'
     try:
         prompt_text = text[:3000]
@@ -156,31 +168,11 @@ def classify_text_with_deepseek(text: str) -> str:
             model="deepseek-chat",
             messages=[
                 {"role": "system", "content": system_prompt},
-=======
-def classify_with_deepseek(text: str) -> bool:
-    """
-    使用 DeepSeek（OpenAI 兼容接口）对文章进行相关性判断。
-    要求模型只返回 YES 或 NO。出错时返回 False（不相关）。
-    """
-    if not USE_DEEPSEEK:
-        return False
-    try:
-        # 尽量控制输入长度以减少 token 消耗
-        prompt_text = text[:3000]
-        completion = openai_client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[
-                {"role": "system", "content": (
-                    "你是一个简洁的二分类文本判断器。判断给定新闻是否与零食、零售、连锁相关，"
-                    "同时包含它们的英文对应词（例如 snack, retail, chain 等）。只返回一个单词：YES 表示相关，NO 表示不相关。"
-                )},
->>>>>>> aa51b52135cefdab7496f8d6136479d972f022b9
                 {"role": "user", "content": prompt_text}
             ],
             max_tokens=6,
             temperature=0
         )
-<<<<<<< HEAD
         out = resp.choices[0].message.content.strip().upper()
         if out.startswith('Y') or 'YES' in out:
             return 'YES'
@@ -190,15 +182,6 @@ def classify_with_deepseek(text: str) -> bool:
     except Exception as e:
         print(f"⚠️ 正文级 DeepSeek 判定出错：{e}")
         return 'MAYBE'
-=======
-        resp = completion.choices[0].message.content.strip().upper()
-        if resp.startswith("Y") or resp.startswith("是") or "YES" in resp:
-            return True
-        return False
-    except Exception as e:
-        print(f"⚠️ DeepSeek 分类出错：{e}")
-        return False
->>>>>>> aa51b52135cefdab7496f8d6136479d972f022b9
 
 # 获取北京时间
 def today_date():
@@ -255,7 +238,6 @@ def fetch_rss_articles(rss_feeds, max_articles=10):
                 continue
             print(f"✅ {source} RSS 获取成功，共 {len(feed.entries)} 条新闻")
 
-<<<<<<< HEAD
             # 两轮筛选：1) 标题编号批量判定；2) 对保留项抓取正文并二次判定
             entries = feed.entries[:max_articles]
             titles = [e.get('title', '无标题') for e in entries]
@@ -264,10 +246,6 @@ def fetch_rss_articles(rss_feeds, max_articles=10):
 
             articles = []
             for idx, entry in enumerate(entries, start=1):
-=======
-            articles = []  # 每个 source 都需要重新初始化列表
-            for entry in feed.entries[:max_articles]:
->>>>>>> aa51b52135cefdab7496f8d6136479d972f022b9
                 title = entry.get('title', '无标题')
                 link = entry.get('link', '') or entry.get('guid', '')
                 summary = entry.get('summary', '') or entry.get('description', '') or ''
@@ -275,7 +253,6 @@ def fetch_rss_articles(rss_feeds, max_articles=10):
                     print(f"⚠️ {source} 的新闻 '{title}' 没有链接，跳过")
                     continue
 
-<<<<<<< HEAD
                 tlabel = title_labels.get(idx, 'MAYBE')
                 if tlabel == 'NO':
                     print(f"⛔ 标题判定为非相关，跳过: [{idx}] {title}")
@@ -292,34 +269,6 @@ def fetch_rss_articles(rss_feeds, max_articles=10):
                 # 保留（YES 或 MAYBE）
                 analysis_text += f"【{title}】\n{article_text}\n\n"
                 print(f"🔹 {source} - [{idx}] {title} 保留 (标题判定={tlabel} -> 正文判定={final_label})")
-=======
-                # 先做快速关键词匹配
-                quick_text = f"{title}\n{summary}"
-                quick_hit = contains_keyword(quick_text)
-
-                # 爬取正文用于深度分析（仅在需要时使用）
-                article_text = None
-                if quick_hit:
-                    # 若关键词命中，再爬正文用于后续汇总
-                    article_text = fetch_article_text(link)
-                    relevant = True
-                else:
-                    # 关键词未命中，尝试爬取正文并用 DeepSeek 判定
-                    article_text = fetch_article_text(link)
-                    check_text = f"{title}\n{summary}\n{article_text}"
-                    if USE_DEEPSEEK:
-                        relevant = classify_with_deepseek(check_text)
-                    else:
-                        relevant = False
-
-                if not relevant:
-                    print(f"⛔ 已移除不相关新闻: {title}")
-                    continue
-
-                # 若相关，加入分析文本和展示列表
-                analysis_text += f"【{title}】\n{article_text}\n\n"
-                print(f"🔹 {source} - {title} 获取并保留")
->>>>>>> aa51b52135cefdab7496f8d6136479d972f022b9
                 articles.append(f"- [{title}]({link})")
 
             if articles:
@@ -331,22 +280,41 @@ def fetch_rss_articles(rss_feeds, max_articles=10):
 
 # AI 生成内容摘要（基于爬取的正文）
 def summarize(text):
-    completion = openai_client.chat.completions.create(
-        model="deepseek-chat",
-        messages=[
-            {"role": "system", "content": """
-             你是一名专业零食连锁零售行业的财经新闻分析师，请根据以下新闻内容，按照以下步骤完成任务：
-             1. 提取新闻中涉及的主要行业和主题，找出近1天涨幅最高的3个行业或主题，以及近3天涨幅较高且此前2周表现平淡的3个行业/主题。（如新闻未提供具体涨幅，请结合描述和市场情绪推测热点）
-             2. 针对每个热点，输出：
-                - 催化剂：分析近期上涨的可能原因（政策、数据、事件、情绪等）。
-                - 复盘：梳理过去3个月该行业/主题的核心逻辑、关键动态与阶段性走势。
-                - 展望：判断该热点是短期炒作还是有持续行情潜力。
-             3. 将以上分析整合为一篇1500字以内的财经热点摘要，逻辑清晰、重点突出，适合专业投资者阅读。
-             """},
-            {"role": "user", "content": text}
-        ]
-    )
-    return completion.choices[0].message.content.strip()
+    """
+    使用 DeepSeek/OpenAI 生成摘要；若未配置 OpenAI，则回退为简单标题列表，且整体捕获异常保证脚本不崩溃。
+    """
+    try:
+        if not USE_DEEPSEEK or not openai_client:
+            # 回退：从 analysis_text 中提取标题列表
+            titles = re.findall(r'【([^】]+)】', text)
+            if not titles:
+                return "（未配置 OPENAI_API_KEY，且未抓取到可分析的文章。）"
+            return "未配置 OPENAI_API_KEY，以下为筛选后抓取到的相关文章标题：\n" + "\n".join([f"{i+1}. {t}" for i, t in enumerate(titles)])
+
+        completion = openai_client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": """
+                 你是一名专业零食连锁零售行业的财经新闻分析师，请根据以下新闻内容，按照以下步骤完成任务：
+                 1. 提取新闻中涉及的主要行业和主题，找出近1天涨幅最高的3个行业或主题，以及近3天涨幅较高且此前2周表现平淡的3个行业/主题。（如新闻未提供具体涨幅，请结合描述和市场情绪推测热点）
+                 2. 针对每个热点，输出：
+                    - 催化剂：分析近期上涨的可能原因（政策、数据、事件、情绪等）。
+                    - 复盘：梳理过去3个月该行业/主题的核心逻辑、关键动态与阶段性走势。
+                    - 展望：判断该热点是短期炒作还是有持续行情潜力。
+                 3. 将以上分析整合为一篇1500字以内的财经热点摘要，逻辑清晰、重点突出，适合专业投资者阅读。
+                 """},
+                {"role": "user", "content": text}
+            ]
+        )
+        return completion.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"❌ 生成摘要时出错：{e}")
+        traceback.print_exc()
+        # 回退到简单标题列表
+        titles = re.findall(r'【([^】]+)】', text)
+        if not titles:
+            return "（生成摘要失败，且未抓取到可分析的文章。）"
+        return "生成摘要失败，以下为筛选后抓取到的相关文章标题：\n" + "\n".join([f"{i+1}. {t}" for i, t in enumerate(titles)])
 
 # 发送微信推送
 def send_to_wechat(title, content):
