@@ -46,6 +46,59 @@ rss_feeds = {
     },
 }
 
+# 关键词过滤（中文 + 英文），可按需扩展
+FILTER_KEYWORDS = [
+    "零食", "零售", "连锁",
+    "snack", "snacks", "retail", "chain", "chains",
+    "convenience", "convenience store", "grocery", "supermarket",
+    "store", "retailer"
+]
+
+# 是否启用 DeepSeek 语义分类（需要设置 OPENAI_API_KEY）
+USE_DEEPSEEK = bool(openai_api_key)
+
+
+def contains_keyword(text: str) -> bool:
+    """快速关键词匹配（中/英混合）。"""
+    if not text:
+        return False
+    text_lower = text.lower()
+    for kw in FILTER_KEYWORDS:
+        if kw.lower() in text_lower:
+            return True
+    return False
+
+
+def classify_with_deepseek(text: str) -> bool:
+    """
+    使用 DeepSeek（OpenAI 兼容接口）对文章进行相关性判断。
+    要求模型只返回 YES 或 NO。出错时返回 False（不相关）。
+    """
+    if not USE_DEEPSEEK:
+        return False
+    try:
+        # 尽量控制输入长度以减少 token 消耗
+        prompt_text = text[:3000]
+        completion = openai_client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": (
+                    "你是一个简洁的二分类文本判断器。判断给定新闻是否与零食、零售、连锁相关，"
+                    "同时包含它们的英文对应词（例如 snack, retail, chain 等）。只返回一个单词：YES 表示相关，NO 表示不相关。"
+                )},
+                {"role": "user", "content": prompt_text}
+            ],
+            max_tokens=6,
+            temperature=0
+        )
+        resp = completion.choices[0].message.content.strip().upper()
+        if resp.startswith("Y") or resp.startswith("是") or "YES" in resp:
+            return True
+        return False
+    except Exception as e:
+        print(f"⚠️ DeepSeek 分类出错：{e}")
+        return False
+
 # 获取北京时间
 def today_date():
     return datetime.now(pytz.timezone("Asia/Shanghai")).date()
@@ -101,19 +154,41 @@ def fetch_rss_articles(rss_feeds, max_articles=10):
                 continue
             print(f"✅ {source} RSS 获取成功，共 {len(feed.entries)} 条新闻")
 
-            articles = []  # 每个source都需要重新初始化列表
-            for entry in feed.entries[:5]:
+            articles = []  # 每个 source 都需要重新初始化列表
+            for entry in feed.entries[:max_articles]:
                 title = entry.get('title', '无标题')
                 link = entry.get('link', '') or entry.get('guid', '')
+                summary = entry.get('summary', '') or entry.get('description', '') or ''
                 if not link:
                     print(f"⚠️ {source} 的新闻 '{title}' 没有链接，跳过")
                     continue
 
-                # 爬取正文用于分析（不展示）
-                article_text = fetch_article_text(link)
-                analysis_text += f"【{title}】\n{article_text}\n\n"
+                # 先做快速关键词匹配
+                quick_text = f"{title}\n{summary}"
+                quick_hit = contains_keyword(quick_text)
 
-                print(f"🔹 {source} - {title} 获取成功")
+                # 爬取正文用于深度分析（仅在需要时使用）
+                article_text = None
+                if quick_hit:
+                    # 若关键词命中，再爬正文用于后续汇总
+                    article_text = fetch_article_text(link)
+                    relevant = True
+                else:
+                    # 关键词未命中，尝试爬取正文并用 DeepSeek 判定
+                    article_text = fetch_article_text(link)
+                    check_text = f"{title}\n{summary}\n{article_text}"
+                    if USE_DEEPSEEK:
+                        relevant = classify_with_deepseek(check_text)
+                    else:
+                        relevant = False
+
+                if not relevant:
+                    print(f"⛔ 已移除不相关新闻: {title}")
+                    continue
+
+                # 若相关，加入分析文本和展示列表
+                analysis_text += f"【{title}】\n{article_text}\n\n"
+                print(f"🔹 {source} - {title} 获取并保留")
                 articles.append(f"- [{title}]({link})")
 
             if articles:
