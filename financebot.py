@@ -70,6 +70,7 @@ def contains_keyword(text: str) -> bool:
     return False
 
 
+<<<<<<< HEAD
 def classify_titles_with_deepseek(titles: list) -> dict:
     """
     对一组新闻标题进行批量判定，返回编号到标签的映射。
@@ -155,11 +156,31 @@ def classify_text_with_deepseek(text: str) -> str:
             model="deepseek-chat",
             messages=[
                 {"role": "system", "content": system_prompt},
+=======
+def classify_with_deepseek(text: str) -> bool:
+    """
+    使用 DeepSeek（OpenAI 兼容接口）对文章进行相关性判断。
+    要求模型只返回 YES 或 NO。出错时返回 False（不相关）。
+    """
+    if not USE_DEEPSEEK:
+        return False
+    try:
+        # 尽量控制输入长度以减少 token 消耗
+        prompt_text = text[:3000]
+        completion = openai_client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": (
+                    "你是一个简洁的二分类文本判断器。判断给定新闻是否与零食、零售、连锁相关，"
+                    "同时包含它们的英文对应词（例如 snack, retail, chain 等）。只返回一个单词：YES 表示相关，NO 表示不相关。"
+                )},
+>>>>>>> aa51b52135cefdab7496f8d6136479d972f022b9
                 {"role": "user", "content": prompt_text}
             ],
             max_tokens=6,
             temperature=0
         )
+<<<<<<< HEAD
         out = resp.choices[0].message.content.strip().upper()
         if out.startswith('Y') or 'YES' in out:
             return 'YES'
@@ -169,6 +190,15 @@ def classify_text_with_deepseek(text: str) -> str:
     except Exception as e:
         print(f"⚠️ 正文级 DeepSeek 判定出错：{e}")
         return 'MAYBE'
+=======
+        resp = completion.choices[0].message.content.strip().upper()
+        if resp.startswith("Y") or resp.startswith("是") or "YES" in resp:
+            return True
+        return False
+    except Exception as e:
+        print(f"⚠️ DeepSeek 分类出错：{e}")
+        return False
+>>>>>>> aa51b52135cefdab7496f8d6136479d972f022b9
 
 # 获取北京时间
 def today_date():
@@ -225,6 +255,7 @@ def fetch_rss_articles(rss_feeds, max_articles=10):
                 continue
             print(f"✅ {source} RSS 获取成功，共 {len(feed.entries)} 条新闻")
 
+<<<<<<< HEAD
             # 两轮筛选：1) 标题编号批量判定；2) 对保留项抓取正文并二次判定
             entries = feed.entries[:max_articles]
             titles = [e.get('title', '无标题') for e in entries]
@@ -233,12 +264,18 @@ def fetch_rss_articles(rss_feeds, max_articles=10):
 
             articles = []
             for idx, entry in enumerate(entries, start=1):
+=======
+            articles = []  # 每个 source 都需要重新初始化列表
+            for entry in feed.entries[:max_articles]:
+>>>>>>> aa51b52135cefdab7496f8d6136479d972f022b9
                 title = entry.get('title', '无标题')
                 link = entry.get('link', '') or entry.get('guid', '')
+                summary = entry.get('summary', '') or entry.get('description', '') or ''
                 if not link:
                     print(f"⚠️ {source} 的新闻 '{title}' 没有链接，跳过")
                     continue
 
+<<<<<<< HEAD
                 tlabel = title_labels.get(idx, 'MAYBE')
                 if tlabel == 'NO':
                     print(f"⛔ 标题判定为非相关，跳过: [{idx}] {title}")
@@ -255,6 +292,34 @@ def fetch_rss_articles(rss_feeds, max_articles=10):
                 # 保留（YES 或 MAYBE）
                 analysis_text += f"【{title}】\n{article_text}\n\n"
                 print(f"🔹 {source} - [{idx}] {title} 保留 (标题判定={tlabel} -> 正文判定={final_label})")
+=======
+                # 先做快速关键词匹配
+                quick_text = f"{title}\n{summary}"
+                quick_hit = contains_keyword(quick_text)
+
+                # 爬取正文用于深度分析（仅在需要时使用）
+                article_text = None
+                if quick_hit:
+                    # 若关键词命中，再爬正文用于后续汇总
+                    article_text = fetch_article_text(link)
+                    relevant = True
+                else:
+                    # 关键词未命中，尝试爬取正文并用 DeepSeek 判定
+                    article_text = fetch_article_text(link)
+                    check_text = f"{title}\n{summary}\n{article_text}"
+                    if USE_DEEPSEEK:
+                        relevant = classify_with_deepseek(check_text)
+                    else:
+                        relevant = False
+
+                if not relevant:
+                    print(f"⛔ 已移除不相关新闻: {title}")
+                    continue
+
+                # 若相关，加入分析文本和展示列表
+                analysis_text += f"【{title}】\n{article_text}\n\n"
+                print(f"🔹 {source} - {title} 获取并保留")
+>>>>>>> aa51b52135cefdab7496f8d6136479d972f022b9
                 articles.append(f"- [{title}]({link})")
 
             if articles:
