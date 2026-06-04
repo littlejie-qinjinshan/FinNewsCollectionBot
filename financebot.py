@@ -284,7 +284,7 @@ def fetch_feed_with_retry(url, retries=3, delay=5):
     return None
 
 # 获取RSS内容（爬取正文但不展示）
-def fetch_rss_articles(rss_feeds, max_articles=10):
+def fetch_rss_articles(rss_feeds, max_articles=None):
     news_data = {}
     analysis_text = ""  # 用于AI分析的正文内容
 
@@ -299,10 +299,21 @@ def fetch_rss_articles(rss_feeds, max_articles=10):
             print(f"✅ {source} RSS 获取成功，共 {len(feed.entries)} 条新闻")
 
             # 两轮筛选：1) 标题编号批量判定；2) 对保留项抓取正文并二次判定
-            entries = feed.entries[:max_articles]
+            if max_articles:
+                entries = feed.entries[:max_articles]
+            else:
+                entries = feed.entries
             titles = [e.get('title', '无标题') for e in entries]
             title_labels = classify_titles_with_deepseek(titles)
-            print(f"🔎 {source} 标题级判定: " + ", ".join([f"{i}:{title_labels.get(i)}" for i in sorted(title_labels.keys())]))
+            # 打印所有判定结果
+            label_strs = [f"{i}:{title_labels.get(i)}" for i in sorted(title_labels.keys())]
+            # 如果结果太多，分块打印，每行最多10个
+            for i in range(0, len(label_strs), 10):
+                chunk = label_strs[i:i+10]
+                if i == 0:
+                    print(f"🔎 {source} 标题级判定: " + ", ".join(chunk))
+                else:
+                    print("   " + ", ".join(chunk))
 
             articles = []
             for idx, entry in enumerate(entries, start=1):
@@ -391,8 +402,8 @@ def send_to_wechat(title, content):
 if __name__ == "__main__":
     today_str = today_date().strftime("%Y-%m-%d")
 
-    # 每个网站获取最多 5 篇文章
-    articles_data, analysis_text = fetch_rss_articles(rss_feeds, max_articles=5)
+    # 每个网站获取所有文章
+    articles_data, analysis_text = fetch_rss_articles(rss_feeds)
     
     # AI生成摘要
     summary = summarize(analysis_text)
