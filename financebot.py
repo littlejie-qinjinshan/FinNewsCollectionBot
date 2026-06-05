@@ -814,7 +814,30 @@ def run_task():
     
     # 4. 发送邮件
     email_subject = f"{today_str} 财经新闻摘要"
-    email_body = f"附件是 {today_str} 的财经新闻摘要文档。\n\n今日分析总结：\n{summary}"
+    
+    # 构建更有层次结构的邮件正文
+    important_articles = structured_content.get('important_articles', [])
+    email_body_lines = []
+    email_body_lines.append(f"附件是 {today_str} 的财经新闻摘要文档。")
+    email_body_lines.append("")
+    email_body_lines.append("一、今日分析总结")
+    email_body_lines.append(summary)
+    email_body_lines.append("")
+    
+    if important_articles:
+        email_body_lines.append("二、重要新闻概览")
+        for idx, article in enumerate(important_articles, start=1):
+            title = article.get('title', '无标题')
+            link = article.get('link', '')
+            email_body_lines.append(f"{idx}. {title}")
+            if link:
+                email_body_lines.append(f"   链接：{link}")
+            email_body_lines.append("")
+    
+    email_body_lines.append("三、全文总结")
+    email_body_lines.append(structured_content.get('conclusion', ''))
+    
+    email_body = "\n".join(email_body_lines)
     send_email_with_attachment(email_subject, email_body, word_path, RECIPIENT_EMAILS)
     
     # 5. 推送到 Server酱（保留原有功能）
