@@ -8,10 +8,10 @@
 
 ## 第二步：初始化Git仓库
 
-在你的电脑上打开终端或命令行，进入项目文件夹：
+在你的电脑上打开终端或命令行，进入finance目录（注意：是finance目录，不是子目录）：
 
 ```bash
-cd c:\Users\18685\Desktop\finance\FinNewsCollectionBot
+cd c:\Users\18685\Desktop\finance
 ```
 
 然后执行以下命令：
@@ -73,10 +73,17 @@ git push -u origin main
 
 ## 第六步：修改定时时间（可选）
 
+当前已配置为每天3次推送：
+- 北京时间9:00
+- 北京时间12:00
+- 北京时间17:00（下午5点）
+
 如果你想修改执行时间，编辑 `.github/workflows/daily-job.yml` 文件中的 cron 表达式：
 
 ```yaml
-cron: '0 1 * * *'  # UTC时间1:00 = 北京时间9:00
+- cron: '0 1 * * *'  # UTC时间1:00 = 北京时间9:00
+- cron: '0 4 * * *'  # UTC时间4:00 = 北京时间12:00
+- cron: '0 9 * * *'  # UTC时间9:00 = 北京时间17:00
 ```
 
 常用的cron示例：
