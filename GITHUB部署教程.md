@@ -117,7 +117,7 @@ git push -u origin main
 
 ```bash
 # 确保在项目目录下
-cd c:\Users\18685\Desktop\finance\FinNewsCollectionBot
+cd c:\Users\18685\Desktop\finance\finnewscollectionbot
 
 # 执行一次测试
 ..\.venv\Scripts\python.exe financebot.py --now
