@@ -107,4 +107,73 @@ graph TD
 
 ---
 
+---
+
+## 📝 本地部署（高级功能
+
+### 新增功能
+
+1. **Word 文档生成**
+   - 自动生成格式规范的 Word 文档
+   - 字体：宋体
+   - 字号：5号字（10.5磅）
+   - 标题层次分明（1-3级标题）
+
+2. **邮件自动发送**
+   - 支持通过 SMTP 自动发送 Word 文档
+   - 收件人：1868532977@163.com
+   - 支持 163 邮箱配置
+
+3. **定时任务**
+   - 默认每天 09:00 执行
+   - 可自定义执行时间
+
+### 本地运行
+
+#### 1. 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+#### 2. 配置环境变量
+
+复制 `.env.example` 为 `.env` 并填写配置：
+
+```bash
+# OpenAI/DeepSeek 配置
+OPENAI_API_KEY=your_deepseek_api_key_here
+
+# 邮件配置
+SMTP_HOST=smtp.163.com
+SMTP_PORT=465
+SMTP_USER=your_email@163.com
+SMTP_PASSWORD=your_email_authorization_code
+RECIPIENT_EMAIL=1868532977@163.com
+
+# 定时任务时间
+SCHEDULE_TIME=09:00
+```
+
+#### 3. 运行
+
+**单次执行（测试）：**
+```bash
+python financebot.py --once
+```
+
+**定时任务模式：
+```bash
+python financebot.py
+```
+
+### 获取 163 邮箱授权码
+
+1. 登录 163 邮箱
+2. 进入「设置」→「POP3/SMTP/IMAP」
+3. 开启「IMAP/SMTP服务」
+4. 按照提示获取授权码
+
+---
+
 © 2024 sgrsun3 | MIT License

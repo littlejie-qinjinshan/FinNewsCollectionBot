@@ -4,3 +4,6 @@ requests
 newspaper3k
 pytz
 lxml_html_clean
+python-docx
+schedule
+python-dotenv
