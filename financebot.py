@@ -402,8 +402,8 @@ def send_to_wechat(title, content):
 if __name__ == "__main__":
     today_str = today_date().strftime("%Y-%m-%d")
 
-    # 每个网站获取所有文章
-    articles_data, analysis_text = fetch_rss_articles(rss_feeds)
+    # 每个网站最多获取5篇文章，提高执行效率
+    articles_data, analysis_text = fetch_rss_articles(rss_feeds, max_articles=5)
     
     # AI生成摘要
     summary = summarize(analysis_text)
