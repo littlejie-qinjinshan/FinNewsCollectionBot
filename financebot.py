@@ -286,7 +286,7 @@ def fetch_feed_with_retry(url, retries=3, delay=5):
 # 获取RSS内容（爬取正文但不展示）
 def fetch_rss_articles(rss_feeds, max_articles=None):
     news_data = {}
-    analysis_text = ""  # 用于AI分析的正文内容
+    analysis_text = ""
 
     for category, sources in rss_feeds.items():
         category_content = ""
@@ -298,49 +298,25 @@ def fetch_rss_articles(rss_feeds, max_articles=None):
                 continue
             print(f"✅ {source} RSS 获取成功，共 {len(feed.entries)} 条新闻")
 
-            # 两轮筛选：1) 标题编号批量判定；2) 对保留项抓取正文并二次判定
             if max_articles:
                 entries = feed.entries[:max_articles]
             else:
                 entries = feed.entries
-            titles = [e.get('title', '无标题') for e in entries]
-            title_labels = classify_titles_with_deepseek(titles)
-            # 打印所有判定结果
-            label_strs = [f"{i}:{title_labels.get(i)}" for i in sorted(title_labels.keys())]
-            # 如果结果太多，分块打印，每行最多10个
-            for i in range(0, len(label_strs), 10):
-                chunk = label_strs[i:i+10]
-                if i == 0:
-                    print(f"🔎 {source} 标题级判定: " + ", ".join(chunk))
-                else:
-                    print("   " + ", ".join(chunk))
 
             articles = []
             for idx, entry in enumerate(entries, start=1):
                 title = entry.get('title', '无标题')
                 link = entry.get('link', '') or entry.get('guid', '')
-                summary = entry.get('summary', '') or entry.get('description', '') or ''
                 if not link:
                     print(f"⚠️ {source} 的新闻 '{title}' 没有链接，跳过")
                     continue
 
-                tlabel = title_labels.get(idx, 'MAYBE')
-                if tlabel == 'NO':
-                    print(f"⛔ 标题判定为非相关，跳过: [{idx}] {title}")
-                    continue
-
-                # 对保留项抓取正文并做二次判定
-                article_text = fetch_article_text(link)
-                check_text = f"{title}\n{article_text}"
-                final_label = classify_text_with_deepseek(check_text)
-                if final_label == 'NO':
-                    print(f"⛔ 正文判定为非相关，移除: [{idx}] {title}")
-                    continue
-
-                # 保留（YES 或 MAYBE）
-                analysis_text += f"【{title}】\n{article_text}\n\n"
-                print(f"🔹 {source} - [{idx}] {title} 保留 (标题判定={tlabel} -> 正文判定={final_label})")
-                articles.append(f"- [{title}]({link})")
+                if contains_keyword(title):
+                    print(f"🔹 {source} - [{idx}] {title} (关键词匹配)")
+                    analysis_text += f"【{title}】\n\n"
+                    articles.append(f"- [{title}]({link})")
+                else:
+                    print(f"   {source} - [{idx}] {title}")
 
             if articles:
                 category_content += f"### {source}\n" + "\n".join(articles) + "\n\n"
@@ -402,8 +378,7 @@ def send_to_wechat(title, content):
 if __name__ == "__main__":
     today_str = today_date().strftime("%Y-%m-%d")
 
-    # 每个网站获取所有文章
-    articles_data, analysis_text = fetch_rss_articles(rss_feeds)
+    articles_data, analysis_text = fetch_rss_articles(rss_feeds, max_articles=5)
     
     # AI生成摘要
     summary = summarize(analysis_text)
