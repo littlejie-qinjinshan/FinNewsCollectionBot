@@ -56,14 +56,11 @@ rss_feeds = {
         "虎嗅网": "https://www.huxiu.com/rss/0.xml",
         "钛媒体": "https://www.tmtpost.com/rss",
         "爱范儿": "https://www.ifanr.com/feed",
-        "PingWest品玩": "https://www.pingwest.com/feed",
         "新浪科技": "https://tech.sina.com.cn/rss/tech.xml",
         "网易科技": "https://tech.163.com/special/000915JB/rss_tech.xml",
         "腾讯科技": "https://tech.qq.com/rss/tech.xml",
-        "极客公园": "https://www.geekpark.net/rss",
         "IT之家": "https://www.ithome.com/rss/",
         "cnBeta": "https://www.cnbeta.com/backend.php",
-        "Engadget中文": "https://cn.engadget.com/rss.xml",
     },
     "🛒 零售与电商": {
         "亿欧": "https://www.iyiou.com/rss",
@@ -74,53 +71,20 @@ rss_feeds = {
     },
     "📱 社交与内容": {
         "新榜": "https://www.newrank.cn/feed",
-        "微果酱": "https://www.wogame.com/feed",
-        "广告门": "https://www.adquan.com/rss",
         "知乎每日精选": "https://www.zhihu.com/rss",
     },
     "📰 综合新闻": {
-        "今日头条": "https://toutiao.com/rss",
         "澎湃新闻": "https://www.thepaper.cn/rss",
         "封面新闻": "https://www.thecover.cn/rss",
-        "人民日报时政": "http://www.people.com.cn/rss/politics.xml",
-        "人民日报国际": "http://www.people.com.cn/rss/world.xml",
     },
     "🇺🇸 国际财经": {
-        "华尔街日报": "https://feeds.content.dowjones.io/public/rss/WSJcomUSBusiness",
-        "MarketWatch": "https://www.marketwatch.com/rss/topstories",
         "BBC商业": "http://feeds.bbci.co.uk/news/business/rss.xml",
         "CNBC财经": "https://www.cnbc.com/id/10000664/device/rss/rss.html",
-        "CNBC商业": "https://www.cnbc.com/id/10001147/device/rss/rss.html",
-        "CNBC投资": "https://www.cnbc.com/id/15839069/device/rss/rss.html",
-        "CNBC财报": "https://www.cnbc.com/id/15839135/device/rss/rss.html",
-        "CNBC新闻": "https://www.cnbc.com/id/100003114/device/rss/rss.html",
     },
     "📈 A股市场": {
         "个股频道": "http://rss.jrj.com.cn/stock/725.xml",
         "综合频道": "http://rss.jrj.com.cn/stock/734.xml",
-        "个股异动": "http://rss.jrj.com.cn/stock/677.xml",
-        "报刊头条": "http://rss.jrj.com.cn/stock/742.xml",
-        "新股要闻": "http://rss.jrj.com.cn/stock/724.xml",
-        "公告速递": "http://rss.jrj.com.cn/stock/729.xml",
-        "今日提示": "http://rss.jrj.com.cn/stock/727.xml",
         "行业新闻": "http://rss.jrj.com.cn/stock/740.xml",
-        "数据掘金": "http://rss.jrj.com.cn/stock/736.xml",
-        "融资融券": "http://rss.jrj.com.cn/stock/733.xml",
-        "机会情报": "http://rss.jrj.com.cn/stock/745.xml",
-    },
-    "🌍 港股市场": {
-        "港交所参与者通告": "https://sc.hkex.com.hk/TuniS/www.hkex.com.hk/Services/RSS-Feeds/The-Stock-Exchange-of-Hong-Kong-Limited?sc_lang=zh-HK",
-        "港交所研究资料": "https://sc.hkex.com.hk/TuniS/www.hkex.com.hk/Services/RSS-Feeds/Research-Materials?sc_lang=zh-HK",
-    },
-    "🇺🇸 美股市场": {
-        "SeekingAlpha ETF策略": "https://seekingalpha.com/tag/etf-portfolio-strategy.xml",
-        "SeekingAlpha IPO分析": "https://seekingalpha.com/tag/ipo-analysis.xml",
-        "SeekingAlpha医疗板块": "https://seekingalpha.com/sector/healthcare.xml",
-        "SeekingAlpha突发新闻": "https://seekingalpha.com/market_currents.xml",
-        "纳斯达克财报": "https://www.nasdaq.com/feed/rssoutbound?category=Earnings",
-        "纳斯达克市场": "https://www.nasdaq.com/feed/rssoutbound?category=Markets",
-        "纳斯达克分红": "https://www.nasdaq.com/feed/rssoutbound?category=Dividends",
-        "SEC文件": "https://www.sec.gov/Archives/edgar/xbrlrss.all.xml",
     },
 }
 
@@ -267,11 +231,17 @@ def fetch_feed_with_headers(url):
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
-    return feedparser.parse(url, request_headers=headers)
+    import socket
+    timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(10)
+    try:
+        return feedparser.parse(url, request_headers=headers)
+    finally:
+        socket.setdefaulttimeout(timeout)
 
 
 # 自动重试获取 RSS
-def fetch_feed_with_retry(url, retries=3, delay=5):
+def fetch_feed_with_retry(url, retries=2, delay=3):
     for i in range(retries):
         try:
             feed = fetch_feed_with_headers(url)
@@ -402,8 +372,8 @@ def send_to_wechat(title, content):
 if __name__ == "__main__":
     today_str = today_date().strftime("%Y-%m-%d")
 
-    # 每个网站获取所有文章
-    articles_data, analysis_text = fetch_rss_articles(rss_feeds)
+    # 每个网站获取前10篇文章（限制数量加快执行）
+    articles_data, analysis_text = fetch_rss_articles(rss_feeds, max_articles=10)
     
     # AI生成摘要
     summary = summarize(analysis_text)
