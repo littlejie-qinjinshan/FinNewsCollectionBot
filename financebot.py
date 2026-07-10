@@ -13,6 +13,15 @@ import pytz
 import os
 import re
 import traceback
+import socket
+import signal
+
+# 设置全局 socket 超时，避免网络请求无限挂起
+socket.setdefaulttimeout(15)
+
+# 用于 signal 超时的统一处理
+def _timeout_handler(signum, frame):
+    raise TimeoutError("请求超时")
 
 # OpenAI API Key
 openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -251,13 +260,21 @@ def today_date():
 def fetch_article_text(url):
     try:
         print(f"📰 正在爬取文章内容: {url}")
-        article = Article(url)
-        article.download()
-        article.parse()
-        text = article.text[:1500]  # 限制长度，防止超出 API 输入限制
+        signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(15)
+        try:
+            article = Article(url)
+            article.download()
+            article.parse()
+            text = article.text[:1500]  # 限制长度，防止超出 API 输入限制
+        finally:
+            signal.alarm(0)
         if not text:
             print(f"⚠️ 文章内容为空: {url}")
         return text
+    except TimeoutError:
+        print(f"❌ 文章爬取超时: {url}")
+        return "（未能获取文章正文）"
     except Exception as e:
         print(f"❌ 文章爬取失败: {url}，错误: {e}")
         return "（未能获取文章正文）"
@@ -267,18 +284,29 @@ def fetch_feed_with_headers(url):
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
-    return feedparser.parse(url, request_headers=headers)
+    # 先用 requests 获取内容并设置严格超时，避免 urllib 阻塞导致无限挂起
+    resp = requests.get(url, headers=headers, timeout=15)
+    resp.raise_for_status()
+    return feedparser.parse(resp.content)
 
 
 # 自动重试获取 RSS
 def fetch_feed_with_retry(url, retries=3, delay=5):
     for i in range(retries):
         try:
-            feed = fetch_feed_with_headers(url)
-            if feed and hasattr(feed, 'entries') and len(feed.entries) > 0:
-                return feed
+            signal.signal(signal.SIGALRM, _timeout_handler)
+            signal.alarm(20)
+            try:
+                feed = fetch_feed_with_headers(url)
+                if feed and hasattr(feed, 'entries') and len(feed.entries) > 0:
+                    return feed
+            finally:
+                signal.alarm(0)
+        except TimeoutError:
+            print(f"⚠️ 第 {i+1} 次请求 {url} 超时")
         except Exception as e:
             print(f"⚠️ 第 {i+1} 次请求 {url} 失败: {e}")
+        if i < retries - 1:
             time.sleep(delay)
     print(f"❌ 跳过 {url}, 尝试 {retries} 次后仍失败。")
     return None
@@ -403,7 +431,7 @@ if __name__ == "__main__":
     today_str = today_date().strftime("%Y-%m-%d")
 
     # 每个网站获取所有文章
-    articles_data, analysis_text = fetch_rss_articles(rss_feeds)
+    articles_data, analysis_text = fetch_rss_articles(rss_feeds, max_articles=10)
     
     # AI生成摘要
     summary = summarize(analysis_text)
@@ -413,6 +441,9 @@ if __name__ == "__main__":
     for category, content in articles_data.items():
         if content.strip():
             final_summary += f"## {category}\n{content}\n\n"
+
+    # 控制台也输出一份，便于调试和无推送时查看
+    print(final_summary)
 
     # 推送到多个server酱key
     send_to_wechat(title=f"📌 {today_str} 财经新闻摘要", content=final_summary)
