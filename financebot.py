@@ -248,10 +248,10 @@ def today_date():
     return datetime.now(pytz.timezone("Asia/Shanghai")).date()
 
 # 爬取网页正文 (用于 AI 分析，但不展示)
-def fetch_article_text(url):
+def fetch_article_text(url, timeout=10):
     try:
         print(f"📰 正在爬取文章内容: {url}")
-        article = Article(url)
+        article = Article(url, request_timeout=timeout)
         article.download()
         article.parse()
         text = article.text[:1500]  # 限制长度，防止超出 API 输入限制
@@ -263,15 +263,21 @@ def fetch_article_text(url):
         return "（未能获取文章正文）"
 
 # 添加 User-Agent 头
-def fetch_feed_with_headers(url):
+def fetch_feed_with_headers(url, timeout=15):
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
-    return feedparser.parse(url, request_headers=headers)
+    try:
+        resp = requests.get(url, headers=headers, timeout=timeout)
+        resp.raise_for_status()
+        return feedparser.parse(resp.content)
+    except Exception as e:
+        print(f"⚠️ 请求 {url} 超时或失败: {e}")
+        return None
 
 
 # 自动重试获取 RSS
-def fetch_feed_with_retry(url, retries=3, delay=5):
+def fetch_feed_with_retry(url, retries=2, delay=3):
     for i in range(retries):
         try:
             feed = fetch_feed_with_headers(url)
@@ -403,7 +409,7 @@ if __name__ == "__main__":
     today_str = today_date().strftime("%Y-%m-%d")
 
     # 每个网站获取所有文章
-    articles_data, analysis_text = fetch_rss_articles(rss_feeds)
+    articles_data, analysis_text = fetch_rss_articles(rss_feeds, max_articles=5)
     
     # AI生成摘要
     summary = summarize(analysis_text)
