@@ -263,11 +263,17 @@ def fetch_article_text(url):
         return "（未能获取文章正文）"
 
 # 添加 User-Agent 头
-def fetch_feed_with_headers(url):
+def fetch_feed_with_headers(url, timeout=20):
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
-    return feedparser.parse(url, request_headers=headers)
+    try:
+        response = requests.get(url, headers=headers, timeout=timeout)
+        response.raise_for_status()
+        return feedparser.parse(response.content)
+    except Exception as e:
+        print(f"⚠️ 请求 {url} 失败: {e}")
+        return None
 
 
 # 自动重试获取 RSS
@@ -277,9 +283,11 @@ def fetch_feed_with_retry(url, retries=3, delay=5):
             feed = fetch_feed_with_headers(url)
             if feed and hasattr(feed, 'entries') and len(feed.entries) > 0:
                 return feed
+            else:
+                print(f"⚠️ 第 {i+1} 次请求 {url} 返回空数据")
         except Exception as e:
             print(f"⚠️ 第 {i+1} 次请求 {url} 失败: {e}")
-            time.sleep(delay)
+        time.sleep(delay)
     print(f"❌ 跳过 {url}, 尝试 {retries} 次后仍失败。")
     return None
 
@@ -402,8 +410,8 @@ def send_to_wechat(title, content):
 if __name__ == "__main__":
     today_str = today_date().strftime("%Y-%m-%d")
 
-    # 每个网站获取所有文章
-    articles_data, analysis_text = fetch_rss_articles(rss_feeds)
+    # 每个网站获取前 5 篇文章（避免运行时间过长）
+    articles_data, analysis_text = fetch_rss_articles(rss_feeds, max_articles=5)
     
     # AI生成摘要
     summary = summarize(analysis_text)
@@ -413,6 +421,12 @@ if __name__ == "__main__":
     for category, content in articles_data.items():
         if content.strip():
             final_summary += f"## {category}\n{content}\n\n"
+
+    # 保存摘要到本地文件，便于查看
+    output_path = f"/workspace/{today_str}_news_summary.md"
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(final_summary)
+    print(f"📝 摘要已保存到: {output_path}")
 
     # 推送到多个server酱key
     send_to_wechat(title=f"📌 {today_str} 财经新闻摘要", content=final_summary)
