@@ -158,7 +158,7 @@ def classify_titles_with_deepseek(titles: list) -> dict:
 
     if not USE_DEEPSEEK or not openai_client:
         for i, t in enumerate(titles, start=1):
-            labels[i] = 'YES' if contains_keyword(t) else 'MAYBE'
+            labels[i] = 'YES' if contains_keyword(t) else 'NO'
         return labels
 
     # 构造编号标题列表
@@ -263,11 +263,17 @@ def fetch_article_text(url):
         return "（未能获取文章正文）"
 
 # 添加 User-Agent 头
-def fetch_feed_with_headers(url):
+def fetch_feed_with_headers(url, timeout=15):
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
-    return feedparser.parse(url, request_headers=headers)
+    try:
+        resp = requests.get(url, headers=headers, timeout=timeout)
+        resp.raise_for_status()
+        return feedparser.parse(resp.content)
+    except Exception as e:
+        print(f"⚠️ 请求 {url} 出错: {e}")
+        return feedparser.FeedParserDict(entries=[])
 
 
 # 自动重试获取 RSS
@@ -389,6 +395,14 @@ def summarize(text):
 
 # 发送微信推送
 def send_to_wechat(title, content):
+    if not server_chan_keys:
+        print("=" * 40)
+        print(f"📌 {title}")
+        print("=" * 40)
+        print(content)
+        print("=" * 40)
+        print("⚠️ 未配置 SERVER_CHAN_KEYS，以上内容为本地预览，未实际发送。")
+        return
     for key in server_chan_keys:
         url = f"https://sctapi.ftqq.com/{key}.send"
         data = {"title": title, "desp": content}
