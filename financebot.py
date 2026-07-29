@@ -271,7 +271,7 @@ def fetch_feed_with_headers(url):
 
 
 # 自动重试获取 RSS
-def fetch_feed_with_retry(url, retries=3, delay=5):
+def fetch_feed_with_retry(url, retries=2, delay=3):
     for i in range(retries):
         try:
             feed = fetch_feed_with_headers(url)
@@ -329,17 +329,21 @@ def fetch_rss_articles(rss_feeds, max_articles=None):
                     print(f"⛔ 标题判定为非相关，跳过: [{idx}] {title}")
                     continue
 
-                # 对保留项抓取正文并做二次判定
-                article_text = fetch_article_text(link)
-                check_text = f"{title}\n{article_text}"
-                final_label = classify_text_with_deepseek(check_text)
-                if final_label == 'NO':
-                    print(f"⛔ 正文判定为非相关，移除: [{idx}] {title}")
-                    continue
+                if USE_DEEPSEEK and openai_client:
+                    # 对保留项抓取正文并做二次判定（仅在 DeepSeek 可用时）
+                    article_text = fetch_article_text(link)
+                    check_text = f"{title}\n{article_text}"
+                    final_label = classify_text_with_deepseek(check_text)
+                    if final_label == 'NO':
+                        print(f"⛔ 正文判定为非相关，移除: [{idx}] {title}")
+                        continue
+                    analysis_text += f"【{title}】\n{article_text}\n\n"
+                    print(f"🔹 {source} - [{idx}] {title} 保留 (标题判定={tlabel} -> 正文判定={final_label})")
+                else:
+                    # DeepSeek 不可用时跳过爬正文，仅基于标题判定
+                    analysis_text += f"【{title}】\n{summary}\n\n"
+                    print(f"🔹 {source} - [{idx}] {title} 保留 (标题判定={tlabel})")
 
-                # 保留（YES 或 MAYBE）
-                analysis_text += f"【{title}】\n{article_text}\n\n"
-                print(f"🔹 {source} - [{idx}] {title} 保留 (标题判定={tlabel} -> 正文判定={final_label})")
                 articles.append(f"- [{title}]({link})")
 
             if articles:
@@ -403,7 +407,8 @@ if __name__ == "__main__":
     today_str = today_date().strftime("%Y-%m-%d")
 
     # 每个网站获取所有文章
-    articles_data, analysis_text = fetch_rss_articles(rss_feeds)
+    max_per_feed = int(os.getenv("MAX_PER_FEED", "15"))
+    articles_data, analysis_text = fetch_rss_articles(rss_feeds, max_articles=max_per_feed)
     
     # AI生成摘要
     summary = summarize(analysis_text)
@@ -414,5 +419,13 @@ if __name__ == "__main__":
         if content.strip():
             final_summary += f"## {category}\n{content}\n\n"
 
+    # 打印摘要（控制台可见）
+    print("\n" + "=" * 60)
+    print(final_summary)
+    print("=" * 60)
+
     # 推送到多个server酱key
-    send_to_wechat(title=f"📌 {today_str} 财经新闻摘要", content=final_summary)
+    if server_chan_keys:
+        send_to_wechat(title=f"📌 {today_str} 财经新闻摘要", content=final_summary)
+    else:
+        print("⚠️ 未配置 SERVER_CHAN_KEYS，跳过微信推送。")
